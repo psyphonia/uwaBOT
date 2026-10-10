@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from database import Database
 from integrations import BlackboardIntegration, MockIntegration, MyCamuIntegration, UniversityIntegration
+from blackboard_auth import BlackboardError
 from mock_data import MockData, build_mock_data
 from models import Announcement, Assignment, CalendarEvent, Campus, Course, INDIA_TZ
 
@@ -49,12 +50,12 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_every_stub_method_fails_clearly_without_network(self) -> None:
         with patch("socket.socket", side_effect=AssertionError("No network permitted")):
-            for provider, name in ((MyCamuIntegration, "MyCamu"), (BlackboardIntegration, "Blackboard")):
+            for provider, name in ((BlackboardIntegration, "Blackboard"),):
                 integration: UniversityIntegration = provider()
                 for method in METHODS:
                     with self.subTest(provider=name, method=method):
                         self.assertTrue(inspect.iscoroutinefunction(getattr(integration, method)))
-                        with self.assertRaisesRegex(NotImplementedError, name + ".*authorized"):
+                        with self.assertRaisesRegex(BlackboardError, name + ".*authorized"):
                             await getattr(integration, method)()
 
     async def test_announcements_are_valid(self) -> None:

@@ -1,11 +1,13 @@
+.git
 .env
 .env.*
 !.env.example
-.venv/
-__pycache__/
-*.py[cod]
+.venv
+__pycache__
 *.db
 *.db-*
 *.sqlite*
+tests
+docs
 *.log
 *.health.json

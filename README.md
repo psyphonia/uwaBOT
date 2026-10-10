@@ -10,6 +10,10 @@ The database uses Python's built-in `sqlite3`. A null campus on an academic reco
 
 ## Setup
 
+The MyCamu adapter is available for offline testing through `MyCamuIntegration`, with `MyCamuConfig`, an injected async transport, and an injected async authentication provider. It has no built-in network or login implementation and is not enabled by bot startup. Campus, subject-code mappings, source timezone, and timetable field mappings must be explicitly configured from confirmed data. Missing configuration and invalid responses fail clearly. Date-only holidays also require confirmed inclusive/exclusive end-date semantics. Attendance is normalized separately; announcements remain unsupported in this adapter.
+
+The adapter does not write to SQLite. Campus holidays have no course association (`course_code=None`) and may be all-day events; a later authorized sync must provide suitable persistence for those records before importing them. Supported university authentication and live schema validation remain unresolved.
+
 Requires Python 3.12 or newer. Prefer 3.12, then 3.13; use 3.14 only if neither is installed. From the project directory in PowerShell:
 
 ```powershell

@@ -3,6 +3,8 @@ from typing import Protocol
 
 from mock_data import MockData, build_mock_data
 from models import Announcement, Assignment, CalendarEvent, Course
+from mycamu import MyCamuIntegration
+from blackboard import BlackboardIntegration
 
 
 class UniversityIntegration(Protocol):
@@ -32,31 +34,3 @@ class MockIntegration:
 
     async def get_announcements(self) -> list[Announcement]:
         return list(self._data.announcements)
-
-
-class MyCamuIntegration:
-    async def get_courses(self) -> list[Course]:
-        raise NotImplementedError("MyCamu courses: authorized access must be investigated before implementation.")
-
-    async def get_assignments(self) -> list[Assignment]:
-        raise NotImplementedError("MyCamu assignments: authorized access must be investigated before implementation.")
-
-    async def get_calendar_events(self) -> list[CalendarEvent]:
-        raise NotImplementedError("MyCamu calendar: authorized access must be investigated before implementation.")
-
-    async def get_announcements(self) -> list[Announcement]:
-        raise NotImplementedError("MyCamu announcements: authorized access must be investigated before implementation.")
-
-
-class BlackboardIntegration:
-    async def get_courses(self) -> list[Course]:
-        raise NotImplementedError("Blackboard courses: authorized API access must be confirmed before implementation.")
-
-    async def get_assignments(self) -> list[Assignment]:
-        raise NotImplementedError("Blackboard assignments: authorized API access must be confirmed before implementation.")
-
-    async def get_calendar_events(self) -> list[CalendarEvent]:
-        raise NotImplementedError("Blackboard calendar: authorized API access must be confirmed before implementation.")
-
-    async def get_announcements(self) -> list[Announcement]:
-        raise NotImplementedError("Blackboard announcements: authorized API access must be confirmed before implementation.")

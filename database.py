@@ -4,7 +4,7 @@ from pathlib import Path
 import sqlite3
 from typing import Iterator, TYPE_CHECKING
 
-from models import Assignment, CalendarEvent, Campus, Course, INDIA_TZ
+from models import Announcement, Assignment, CalendarEvent, Campus, Course, CourseContent, INDIA_TZ
 
 if TYPE_CHECKING:
     from mock_data import MockData
@@ -54,8 +54,6 @@ class Database:
                     external_id TEXT,
                     source_url TEXT
                 );
-                CREATE UNIQUE INDEX IF NOT EXISTS course_identity
-                    ON courses(code, COALESCE(campus, ''));
                 CREATE TABLE IF NOT EXISTS assignments (
                     id TEXT PRIMARY KEY,
                     course_id INTEGER NOT NULL REFERENCES courses(id),
@@ -93,21 +91,29 @@ class Database:
                 "INSERT INTO campuses(name) VALUES (?) ON CONFLICT DO NOTHING",
                 [(campus.value,) for campus in Campus],
             )
+            from sync_database import initialize_sync
+            initialize_sync(connection)
+            from user_data import initialize_users
+            initialize_users(connection)
 
     def seed(self, data: "MockData") -> None:
         """Insert sample records atomically without changing existing records or dates."""
+        if any(item.end_at <= item.start_at for item in data.events):
+            raise sqlite3.IntegrityError("Sample classes require a positive duration.")
         with self.connect() as connection:
             connection.executemany(
                 """INSERT INTO courses(code, name, campus, source, external_id, source_url)
-                   VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING""",
+                   SELECT ?, ?, ?, ?, ?, ? WHERE NOT EXISTS
+                   (SELECT 1 FROM courses WHERE source=? AND code=? AND campus IS ?)
+                   ON CONFLICT DO NOTHING""",
                 [(item.code, item.name, campus_value(item.campus), item.source,
-                  item.external_id, item.source_url) for item in data.courses],
+                  item.external_id, item.source_url, item.source, item.code, campus_value(item.campus)) for item in data.courses],
             )
 
             def course_id(code: str, campus: Campus | None) -> int:
                 row = connection.execute(
                     """SELECT id FROM courses WHERE code = ? AND (campus IS ? OR campus IS NULL)
-                       ORDER BY campus IS NULL LIMIT 1""", (code, campus_value(campus)),
+                       AND source = 'mock' ORDER BY campus IS NULL LIMIT 1""", (code, campus_value(campus)),
                 ).fetchone()
                 if row is None:
                     raise ValueError(f"No matching course for sample record: {code}")
@@ -193,16 +199,16 @@ class Database:
         ) for row in rows]
 
     def get_events_between(
-        self, start: datetime, end: datetime, campus: Campus | None = None
+        self, start: datetime, end: datetime, campus: Campus | None = None, limit: int = -1
     ) -> list[CalendarEvent]:
         selected = campus_value(campus)
         with self.connect() as connection:
             rows = connection.execute(
                 """SELECT e.*, c.code AS course_code FROM calendar_events e
-                   JOIN courses c ON c.id = e.course_id
+                   LEFT JOIN courses c ON c.id = e.course_id
                    WHERE e.start_at >= ? AND e.start_at < ?
                    AND (? IS NULL OR e.campus = ? OR e.campus IS NULL)
-                   ORDER BY e.start_at, e.id""", (utc_text(start), utc_text(end), selected, selected),
+                   ORDER BY e.start_at, e.id LIMIT ?""", (utc_text(start), utc_text(end), selected, selected, limit),
             ).fetchall()
         return [CalendarEvent(
             id=row["id"], course_code=row["course_code"], title=row["title"],
@@ -210,6 +216,7 @@ class Database:
             end_at=datetime.fromisoformat(row["end_at"]), location=row["location"],
             campus=read_campus(row["campus"]), source=row["source"],
             external_id=row["external_id"], source_url=row["source_url"],
+            all_day=bool(row["all_day"]),
         ) for row in rows]
 
     def get_events_for_day(self, now: datetime, campus: Campus | None = None) -> list[CalendarEvent]:
@@ -221,3 +228,29 @@ class Database:
         utc_text(now)
         start = now.astimezone(timezone.utc)
         return self.get_events_between(start, start + timedelta(days=7), campus)
+
+    def get_next_event(self, now: datetime, campus: Campus | None = None) -> CalendarEvent | None:
+        events = self.get_events_between(now + timedelta(microseconds=1), datetime.max.replace(tzinfo=timezone.utc), campus, limit=1)
+        return events[0] if events else None
+
+    def get_announcements(self, campus: Campus | None = None) -> list[Announcement]:
+        selected = campus_value(campus)
+        with self.connect() as connection:
+            rows = connection.execute("""SELECT a.*, c.code AS course_code FROM announcements a
+                LEFT JOIN courses c ON c.id=a.course_id WHERE (? IS NULL OR a.campus=? OR a.campus IS NULL)
+                ORDER BY a.published_at DESC, a.id""", (selected, selected)).fetchall()
+        return [Announcement(row["id"], row["title"], row["body"], datetime.fromisoformat(row["published_at"]),
+                             read_campus(row["campus"]), row["course_code"], row["source"], row["external_id"],
+                             row["source_url"]) for row in rows]
+
+    def get_undated_assessments(self, campus: Campus | None = None) -> list[CourseContent]:
+        selected = campus_value(campus)
+        with self.connect() as connection:
+            rows = connection.execute("""SELECT x.*, c.code AS course_code FROM course_content x
+                JOIN courses c ON c.id=x.course_id
+                WHERE x.handler IN (?, ?) AND (? IS NULL OR x.campus=? OR x.campus IS NULL)
+                AND NOT EXISTS (SELECT 1 FROM assignments a WHERE a.course_id=x.course_id AND a.title=x.title)
+                ORDER BY c.code, x.title, x.id""",
+                ("resource/x-bb-assignment", "resource/x-bb-asmt-test", selected, selected)).fetchall()
+        return [CourseContent(row["id"], row["course_code"], row["title"], row["description"], row["handler"],
+                              read_campus(row["campus"]), row["source"], row["external_id"], row["source_url"]) for row in rows]

@@ -1,0 +1,14 @@
+services:
+  bot:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_PATH: /data/uwa_india.db
+      HEALTH_FILE: /tmp/uwa-bot-health.json
+    volumes:
+      - bot-data:/data
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+volumes:
+  bot-data:

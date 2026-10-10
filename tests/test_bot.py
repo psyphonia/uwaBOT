@@ -78,7 +78,7 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
         async with bot.UwaBot(self.database) as client:
             self.assertEqual(
                 {command.name for command in client.tree.get_commands()},
-                {"ping", "today", "week", "due", "course"},
+                {"ping", "today", "tomorrow", "week", "due", "course", "announcements", "nextclass", "reminders", "sync", "setup", "profile"},
             )
             command = client.tree.get_command("ping")
             self.assertIsInstance(command, discord.app_commands.Command)

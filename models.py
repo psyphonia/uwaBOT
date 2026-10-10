@@ -36,7 +36,7 @@ class Assignment:
 @dataclass(frozen=True)
 class CalendarEvent:
     id: str
-    course_code: str
+    course_code: str | None
     title: str
     start_at: datetime
     end_at: datetime
@@ -45,6 +45,7 @@ class CalendarEvent:
     source: str = "mock"
     external_id: str | None = None
     source_url: str | None = None
+    all_day: bool = False
 
 
 @dataclass(frozen=True)
@@ -57,4 +58,28 @@ class Announcement:
     course_code: str | None = None
     source: str = "mock"
     external_id: str | None = None
+    source_url: str | None = None
+
+
+@dataclass(frozen=True)
+class Attendance:
+    id: str
+    campus: Campus
+    total_count: int | None
+    present_count: int | None
+    percentage: float | None
+    source: str = "mycamu"
+    external_id: str | None = None
+
+
+@dataclass(frozen=True)
+class CourseContent:
+    id: str
+    course_code: str
+    title: str
+    description: str
+    handler: str | None
+    campus: Campus | None
+    source: str
+    external_id: str
     source_url: str | None = None

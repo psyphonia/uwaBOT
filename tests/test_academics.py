@@ -201,7 +201,7 @@ class AcademicCommandTests(unittest.IsolatedAsyncioTestCase):
             await self.tree.get_command(name).callback(interaction, **kwargs)
         interaction.response.send_message.assert_awaited_once()
         embed = interaction.response.send_message.call_args.kwargs["embed"]
-        self.assertIn("SAMPLE DATA", embed.footer.text)
+        self.assertIn("IST", embed.footer.text)
         self.assertLessEqual(len(embed.fields), 25)
         self.assertLessEqual(len(embed), 6000)
         return embed
@@ -269,7 +269,7 @@ class AcademicCommandTests(unittest.IsolatedAsyncioTestCase):
             connection.execute("DELETE FROM calendar_events")
             connection.execute("DELETE FROM assignments")
         embed = await self.invoke("course", course_code="CITS1401")
-        self.assertTrue(all(field.value == "Updated sample name" for field in embed.fields))
+        self.assertTrue(all("Updated sample name" in field.value for field in embed.fields))
         for name in ("today", "week", "due"):
             embed = await self.invoke(name)
             self.assertTrue(embed.fields[0].value.startswith("No "))
