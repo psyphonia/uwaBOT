@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 from academic_commands import register_academic_commands
 from database import Database
 from mock_data import build_mock_data
-from reminders import ReminderService, load_reminder_channel_id, reminder_embed
+from reminders import reminder_embed
 from models import Assignment, Campus
 from integrations import MockIntegration
 from sync_engine import SyncEngine
@@ -176,7 +176,7 @@ def main() -> int:
         database.initialize()
         database.seed(build_mock_data(datetime.now(timezone.utc)))
         LOGGER.info("event=database_ready")
-        UwaBot(database, load_reminder_channel_id()).run(token, log_handler=None)
+        UwaBot(database).run(token, log_handler=None)
     except sqlite3.Error:
         LOGGER.error("event=database_failed Could not initialize or seed the SQLite database.")
         return 1

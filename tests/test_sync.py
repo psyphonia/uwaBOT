@@ -5,7 +5,7 @@ import tempfile
 import sqlite3
 from types import SimpleNamespace
 import unittest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import bot
 from database import Database
@@ -142,6 +142,26 @@ class SyncTests(unittest.IsolatedAsyncioTestCase):
             embed = interaction.followup.send.call_args.kwargs["embed"]
             self.assertIn("6 added", embed.fields[0].value)
             self.assertTrue(interaction.followup.send.call_args.kwargs["ephemeral"])
+
+    async def test_configured_sync_admin_is_enforced(self):
+        engine = SyncEngine(self.database, {"mock": MockIntegration(build_mock_data(NOW))})
+        engine.sync_all = AsyncMock()
+        with patch.dict("os.environ", {"SYNC_ADMIN_USER_ID": "123"}):
+            async with bot.UwaBot(self.database, sync_engine=engine) as client:
+                command = client.tree.get_command("sync")
+                denied = SimpleNamespace(guild_id=1, user=SimpleNamespace(id=456),
+                    permissions=SimpleNamespace(administrator=True),
+                    response=SimpleNamespace(send_message=AsyncMock(), defer=AsyncMock()))
+                await command.callback(denied)
+                denied.response.send_message.assert_awaited_once()
+                allowed = SimpleNamespace(guild_id=1, user=SimpleNamespace(id=123),
+                    permissions=SimpleNamespace(administrator=True),
+                    response=SimpleNamespace(send_message=AsyncMock(), defer=AsyncMock()),
+                    followup=SimpleNamespace(send=AsyncMock()))
+                engine.sync_all.return_value = {}
+                await command.callback(allowed)
+                allowed.response.defer.assert_awaited_once_with(ephemeral=True)
+                engine.sync_all.assert_awaited_once()
 
     async def test_unconfigured_real_adapters_do_not_block_mock(self):
         engine = SyncEngine(self.database, {"mycamu": MyCamuIntegration(), "blackboard": BlackboardIntegration(),

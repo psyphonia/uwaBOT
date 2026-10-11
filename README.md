@@ -1,48 +1,53 @@
 # uwa-india-discord-bot
 
-Discord bot project for The University of Western Australia India students at the Mumbai and Chennai campuses.
+Persistent Discord bot for UWA India students in Mumbai and Chennai. Academic commands read from SQLite. `/setup` selects a campus, sample courses, timezone, and private-message reminders; `/profile` shows the saved preferences. `/sync` remains server-administrator-only and can be restricted to one Discord account with `SYNC_ADMIN_USER_ID`.
 
-Stage 4: `/ping` replies `Pong!`. `/today`, `/week`, `/due`, and `/course course_code:CITS1401` read fake academic data from SQLite. Each academic command accepts an optional Mumbai/Chennai campus choice; omit it to show both campuses.
+MyCamu is paused and is not loaded by the bot. Blackboard is the only planned live university integration. Optional Blackboard OAuth registration variables are validated at startup but do not enable authorization, account linking, or live synchronization. No university password, OAuth token, or client secret is stored in SQLite. Stage 14 and AI querying are intentionally omitted.
 
-Startup creates `uwa_india.db` beside `bot.py` and seeds missing sample records. Repeated starts preserve existing records and dates. `/today` covers the India calendar day; `/week` covers the next 7 days from now; `/due` excludes past deadlines. Dates are stored in UTC and displayed in IST. Course names, rooms, classes, and assignments are fictional. To regenerate fresh sample dates, stop the bot and move the development database aside before restarting.
+## Persistent deployment
 
-The database uses Python's built-in `sqlite3`. A null campus on an academic record means both campuses, and matches either campus filter. Tests use temporary databases and never modify `uwa_india.db`.
+Use one Docker container on an always-on Linux VM with persistent local storage. SQLite is sufficient for the current single-process bot; do not run multiple replicas against the same database.
 
-## Setup
+Copy `.env.example` to `.env`, then set `DISCORD_TOKEN`. Set `SYNC_ADMIN_USER_ID` to limit `/sync` to one server administrator. Keep all four Blackboard variables empty until UWA approves and registers the integration. Never commit `.env`.
 
-The MyCamu adapter is available for offline testing through `MyCamuIntegration`, with `MyCamuConfig`, an injected async transport, and an injected async authentication provider. It has no built-in network or login implementation and is not enabled by bot startup. Campus, subject-code mappings, source timezone, and timetable field mappings must be explicitly configured from confirmed data. Missing configuration and invalid responses fail clearly. Date-only holidays also require confirmed inclusive/exclusive end-date semantics. Attendance is normalized separately; announcements remain unsupported in this adapter.
+Install the Discord application with the `bot` and `applications.commands` scopes. It needs View Channel, Send Messages, and Embed Links permissions; no privileged intents or Discord Administrator permission are required. Students must allow bot direct messages to receive reminders.
 
-The adapter does not write to SQLite. Campus holidays have no course association (`course_code=None`) and may be all-day events; a later authorized sync must provide suitable persistence for those records before importing them. Supported university authentication and live schema validation remain unresolved.
+Start or update the bot from the project directory:
 
-Requires Python 3.12 or newer. Prefer 3.12, then 3.13; use 3.14 only if neither is installed. From the project directory in PowerShell:
+```sh
+docker compose up -d --build
+```
+
+Inspect it with:
+
+```sh
+docker compose ps
+docker compose logs --tail=100 bot
+```
+
+The named `bot-data` volume keeps `/data/uwa_india.db` across restarts and container replacement. Do not run `docker compose down -v` unless you intend to delete the database. For an existing database, stop the bot, copy the database into the volume as `uwa_india.db`, grant UID 10001 read/write access, and restart. Database initialization is repeatable and preserves legacy data without guessing student ownership.
+
+Compose uses `restart: unless-stopped`, a 30-second shutdown period, and an init process. SIGTERM closes reminder tasks and the Discord connection. A local heartbeat provides container health without exposing a network port. An unhealthy status is diagnostic; Compose does not restart a container solely because it is unhealthy.
+
+Reminder claims and successful delivery state are stored per user, assignment, deadline, and threshold. Confirmed Discord rejection releases a claim. An uncertain delivery or crash retains its claim to prevent duplicate messages; inspect delivery before manually changing such state. The same SQLite volume must survive restarts to retain this protection.
+
+## Environment
+
+`DISCORD_TOKEN` is required. `DATABASE_PATH` defaults to `uwa_india.db`; production should use an absolute path on persistent storage. `LOG_LEVEL` accepts `INFO`, `WARNING`, or `ERROR`. `HEALTH_FILE` is optional outside Docker. `UWA_CAMPUS` remains an optional fallback for legacy/test use; configured student profiles take precedence.
+
+The future Blackboard variables are `BLACKBOARD_BASE_URL`, `BLACKBOARD_CLIENT_ID`, `BLACKBOARD_CLIENT_SECRET`, and `BLACKBOARD_REDIRECT_URI`. Either set all four or leave all four empty. Providing them only validates the approved registration shape; live OAuth and university sync remain disabled until UWA approval and secure per-user token storage are implemented.
+
+For local development with Python 3.12 or newer:
 
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 Copy-Item .env.example .env
-```
-
-Change `-3.12` to the available version when needed. Skip environment creation if `.venv` already exists, and skip the copy command if `.env` already exists.
-
-Set `DISCORD_TOKEN` in `.env` to your Discord application bot token. Keep `.env` private and never store UWA passwords.
-
-Optionally set `REMINDER_CHANNEL_ID` in `.env` to a test text channel ID. Give the bot View Channel, Send Messages, and Embed Links permissions there. Missing or invalid channel configuration disables reminders with a warning; commands still work. The single test channel receives sample reminders from both campuses.
-
-Reminders check every minute after Discord is ready. Catch-up windows are: more than 6 and at most 7 days remaining, more than 18 and at most 24 hours remaining, and more than 0 and at most 3 hours remaining. Older thresholds are skipped. Messages include the exact IST deadline, relative time, campus, and source link when available.
-
-SQLite reserves each assignment/deadline/threshold before delivery and records `sent_at` only after success. Confirmed Discord rejections release the reservation for retry. Timeouts, uncertain server responses, interrupted sends, or delivery-recording failures remain pending to avoid duplicate sends. These entries are logged for manual review and never automatically resent. After a crash, a pending entry may represent either a delivered or an undelivered message; check the channel before clearing that specific pending reservation. Keep the database across restarts to preserve reminder history.
-
-
-Install your Discord application in a test server with the `bot` and `applications.commands` OAuth2 scopes. No privileged intents or Administrator permission are needed. Allow the bot to view the test channel and send messages.
-
-```powershell
 .\.venv\Scripts\python.exe bot.py
 ```
 
-Startup registers commands globally using [discord.py command synchronization](https://discordpy.readthedocs.io/en/stable/interactions/api.html#discord.app_commands.CommandTree.sync); Discord may take time to display them. After the ready log appears, run `/ping` in the test server. Stop with Ctrl+C.
-
-Local tests (no Discord connection or real token required):
+Run tests without Discord or university access:
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe -m unittest discover -s tests -q
 ```
